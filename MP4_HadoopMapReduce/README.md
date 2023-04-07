@@ -1,7 +1,7 @@
-# MP4_HadoopMapReduce_Template
+# MP4_HadoopMapReduce
 
 ## Log 
-Last updated in April 2021, by Yigong Hu (yigongh2@illinois.edu)
+Last updated in April 2021
 
 ## Contents
 We have the Docker image, Python template, and the Java template for this MP.
