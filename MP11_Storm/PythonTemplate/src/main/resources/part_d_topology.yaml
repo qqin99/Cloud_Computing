@@ -1,0 +1,152 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+
+# topology definition
+# name to be used when submitting
+name: "part-D"
+
+# TODO
+# Task: implement your topology for part d
+
+# topology configuration
+# this will be passed to the submitter as a map of config options
+config:
+    storm.local.hostname: "localhost"
+    topology.max.task.parallelism: 3
+    # set this to true if you want to see more debug log
+    # set it to false before submitting
+    topology.debug: false
+    # redis configuration, useful in store bolt
+    redis:
+      host: "localhost"
+      port: 6379
+      db: 0
+      password: "uiuc_cs498_mp11"
+      timeout: 2000
+      # redis hash key for part D is "partDTopN"
+      hashKey: "partDTopN"
+    # Hint: you can set input file path here
+    # make sure it's "/tmp/data.txt" in your final submission
+    infile : "/tmp/data.txt"
+    # Hint: set N here
+    # make sure it's 10 in your final submission
+    N : 10
+
+# spout definitions
+spouts:
+  - id: "file_reader_spout"
+    className: "org.apache.storm.flux.wrappers.spouts.FluxShellSpout"
+    constructorArgs:
+      # Command line
+      - [ "python", "file_reader_spout.py" ]
+      # Output field(s)
+      - [ "sentence" ]
+    # parallelism hint
+    parallelism: 1
+
+# bolt definitions
+bolts:
+  - id: "split_sentence_bolt"
+    className: "org.apache.storm.flux.wrappers.bolts.FluxShellBolt"
+    constructorArgs:
+      - [ "python","split_sentence_bolt.py" ]
+      - [ "word" ]
+    parallelism: 3
+
+  - id: "normalizer_bolt"
+    className: "org.apache.storm.flux.wrappers.bolts.FluxShellBolt"
+    constructorArgs:
+      - [ "python","normalizer_bolt.py" ]
+      - [ "word" ]
+    parallelism: 3
+
+  - id: "word_count_bolt"
+    className: "org.apache.storm.flux.wrappers.bolts.FluxShellBolt"
+    constructorArgs:
+      # Command line
+      - [ "python","word_count_bolt.py" ]
+      # Output field(s)
+      - [ "word","count" ]
+    parallelism: 2
+
+  # Hint: the new top N tracking bolt you need implement in this part is
+  # multilang/resources/top_n_finder_bolt.py
+  # You need to load N from conf when initialize the bolt
+  - id: "top_n_finder_bolt"
+    className: "org.apache.storm.flux.wrappers.bolts.FluxShellBolt"
+    constructorArgs:
+      # Command line
+      - [ "python","top_n_finder_bolt.py" ]
+      # Output field(s)
+      - [ "topN","output" ]
+    parallelism: 2
+
+  # Hint: change the store bolt to store the top-N words, for which you need to implement 
+  # multilang/resources/top_n_store_bolt.py
+  - id: "top_n_store_bolt"
+    className: "org.apache.storm.flux.wrappers.bolts.FluxShellBolt"
+    constructorArgs:
+      - [ "python","top_n_store_bolt.py" ]
+    parallelism: 3
+
+# stream definitions
+# stream definitions define connections between spouts and bolts.
+streams:
+  # Hint: add new top N finder bolt into the topology
+  - name: "Spout --> Splitter" # name isn't used (placeholder for logging, UI, etc.)
+      # The stream emitter
+    from: "file_reader_spout"
+      # The stream consumer
+    to: "split_sentence_bolt"
+      # Grouping type
+    grouping:
+      type: SHUFFLE
+
+   # Hint: add new normalize bolt into the topology
+  - name: "Splitter -> Normalizer"
+    from: "split_sentence_bolt"
+    to: "normalizer_bolt"
+    grouping:
+       type: SHUFFLE
+#       # field(s) to group on
+#       args: [ "word" ]
+
+  - name: "Normalizer -> Counter"
+    from: "normalizer_bolt"
+    to: "word_count_bolt"
+    grouping:
+      type: FIELDS
+        # field(s) to group on
+      args: ["word"]
+
+  # Task: pipe output of split bolt to word count bolt
+  # Hint: choose the right grouping type to make problem easier
+  - name: "Counter -> Top N finder"
+    from: "word_count_bolt"
+    to: "top_n_finder_bolt"
+    grouping:
+      type: SHUFFLE
+        # field(s) to group on
+#      args: ["output"]
+
+  # Task: pipe output of word count bolt to redis store bolt
+  - name: "Top N finder -> redis"
+    from: "top_n_finder_bolt"
+    to: "top_n_store_bolt"
+    grouping:
+      type: GLOBAL
